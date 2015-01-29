@@ -56,8 +56,8 @@ public without sharing class UTIL_JobScheduler {
     
     public static Boolean canRunBatch() {
         Integer jobs = [Select count() From AsyncApexJob Where JobType = 'BatchApex' and (Status = 'Queued' or Status = 'Processing' 
-                       or Status = 'Preparing')];
-        if(jobs < 5)
+                       or Status = 'Preparing' or Status = 'Holding')];
+        if(jobs < 100)
             return true;
         return false;           
     }
