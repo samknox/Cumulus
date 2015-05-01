@@ -29,25 +29,47 @@
 */
 
 /**
- * Class that classes to be run from a trigger according to the TDTM design
+ * @author Salesforce.com Foundation
+ * @date 2014
+ * @group TDTM
+ * @group-content ../../ApexDocContent/TDTM.htm
+ * @description Abstract class that classes to be run from a trigger, according to the TDTM design,
  * need to extend.
+ *
+ * It will be the duty of the run method implementation to set a flag to prevent re-entrancy. We cannot do 
+ * that for them in TDTM_TriggerHandler, even if it's after calling the future, because then it might get set 
+ * before the future runs (and since the future method calls the non-future method, which checks the flag, 
+ * the future method would have no effect.) Also, some classes might not want to prevent it.
  */
 global abstract class TDTM_Runnable {
 
-    //It will be the duty of the run method implementation to set a flag to prevent re-entrancy. We cannot do 
-    //that for them in TDTM_TriggerHandler, even if it's after calling the future, because then it might get set 
-    //before the future runs (and since the future method calls the non-future method, which checks the flag, 
-    //the future method would have no effect.) Also, some classes might not want to prevent it.
-    
-    //We need this method because Apex won't let us call a non-static method from a separate object instance
+    /*******************************************************************************************************
+     * @description Calls the run method of the class, as a future. To be called dynamically from TDTM_TriggerHandler. 
+     * We need this method because Apex won't let us call a non-static method from a separate object instance.
+     * @param newIds The IDs of the records that were passed to the trigger as trigger.new.
+     * @param oldIds The IDs of the records that were passed to the trigger as trigger.old.
+     * @param action The event (before insert, after insert,...) that caused the class to run.
+     * @param objectName The name of the SObject the class runs for.
+     * @param classToRunName The name of the class to run.
+     * @return void
+     */
     public void runFutureNonStatic(Set<Id> newIds, Set<Id> oldIds, String action, String objectName, String classToRunName) {
         runFuture(newIds, oldIds, action, objectName, classToRunName);
     }
     
+    /*******************************************************************************************************
+     * @description Calls the run method of the class, as a future.
+     * @param newIds The IDs of the records that were passed to the trigger as trigger.new.
+     * @param oldIds The IDs of the records that were passed to the trigger as trigger.old.
+     * @param action The event (before insert, after insert,...) that caused the class to run.
+     * @param objectName The name of the SObject the class runs for.
+     * @param classToRunName The name of the class to run.
+     * @return void
+     */
     @future
     public static void runFuture(Set<Id> newIds, Set<Id> oldIds, String action, String objectName, String classToRunName) {
         
-        Schema.DescribeSObjectResult objResult = TDTM_TriggerActionHelper.getDescribeObjectByName(objectName);
+        Schema.DescribeSObjectResult objResult = UTIL_Describe.getObjectDescribe(objectName);
         TDTM_Runnable.Action triggerAction = TDTM_TriggerActionHelper.getTriggerActionFromName(action);
         
         //Get all fields for the object
@@ -81,15 +103,32 @@ global abstract class TDTM_Runnable {
         }
     }
     
+    /*******************************************************************************************************
+     * @description Method to be implemented by the classes the extend this abstract class. This is the method
+     * that will be called by the trigger handler.
+     * @param newIds The records that were passed to the trigger as trigger.new.
+     * @param oldIds The records that were passed to the trigger as trigger.old.
+     * @param action The event (before insert, after insert,...) that caused the class to run.
+     * @param objectResult The type of SObject the class runs for.
+     * @return DmlWrapper A wrapper containing all the records to perform DML on.
+     */
     global abstract DmlWrapper run(List<SObject> newlist, List<SObject> oldlist, Action triggerAction, 
         Schema.DescribeSObjectResult objResult);
-        
+    
+    /*******************************************************************************************************
+    * @description Class that wraps records that need to have DML performed on them. One DML operation of each
+    * kind will be performed at the end of the transaction.
+    */     
     global class DmlWrapper {
         global List<SObject> objectsToInsert = new List<SObject>(); 
         global List<SObject> objectsToUpdate = new List<SObject>();
         global List<SObject> objectsToDelete = new List<SObject>();
         global List<SObject> objectsToUndelete = new List<SObject>();
         
+        /*******************************************************************************************************
+        * @description Groups the records in each of the property lists by object type.
+        * @return void
+        */
         public void groupByType() {
         	objectsToInsert = groupSObjects(objectsToInsert);
         	objectsToUpdate = groupSObjects(objectsToUpdate);
@@ -97,72 +136,41 @@ global abstract class TDTM_Runnable {
         	objectsToUndelete = groupSObjects(objectsToUndelete);
         }
         
-        //To avoid the "Cannot have more than 10 chunks in a single operation. Please rearrange 
-        //the data to reduce chunking" error.
+        /*******************************************************************************************************
+        * @description Groups records by object type.To avoid the "Cannot have more than 10 chunks in a single operation. 
+        * Please rearrange the data to reduce chunking" error.
+        * @param sobjects The records to group by type.
+        * @return List<SObject> A list with the records passed as parameters ordered by type. Duplicates removed.
+        */
         private List<SObject> groupSObjects(List<SObject> sobjects) {
-        	//First remove duplicates to avoid the "Duplicate id in list" error
-        	sobjects = new List<SObject>(new Set<SObject>(sobjects));
-        	        	
-        	List<SObject> sorted = new List<SObject>();
-        	
-        	List<SObject> accounts = new List<SObject>();
-            List<SObject> contacts = new List<SObject>();
-            List<SObject> opps = new List<SObject>();
-            List<SObject> addresses = new List<SObject>();
-            List<SObject> affiliations = new List<SObject>();
-            List<SObject> errors = new List<SObject>();
-            List<SObject> households = new List<SObject>();
-            List<SObject> payments = new List<SObject>();
-            List<SObject> recDonations = new List<SObject>();
-            List<SObject> relationships = new List<SObject>();
-            list<SObject> allocations = new list<SObject>();
-            List<SObject> unknown = new List<SObject>();
-            
-            for(SObject o : sobjects) {
-                if(o instanceof Account) {
-                	accounts.add(o);
-                } else if(o instanceof Contact) {
-                	contacts.add(o);
-                } else if(o instanceof Opportunity) {
-                	opps.add(o);
-                } else if(o instanceof Address__c) {
-                    addresses.add(o);
-                } else if(o instanceof npe5__Affiliation__c) {
-                    affiliations.add(o);
-                } else if(o instanceof Error__c) {
-                    errors.add(o);
-                } else if(o instanceof npo02__Household__c) {
-                    households.add(o);
-                } else if(o instanceof npe01__OppPayment__c) {
-                    payments.add(o);
-                } else if(o instanceof npe03__Recurring_Donation__c) {
-                    recDonations.add(o);
-                } else if(o instanceof npe4__Relationship__c) {
-                    relationships.add(o);
-                } else if(o instanceof Allocation__c) {
-                    allocations.add(o);
+                        
+            map<string,list<SObject>> mapNameToListSObject = new map<string,list<SObject>>();
+            list<SObject> sorted = new list<SObject>();
+
+            //First remove duplicates to avoid the "Duplicate id in list" error
+            sobjects = new list<SObject>(new set<SObject>(sobjects));
+
+            for (SObject SObj : sobjects) {
+                string objName = SObj.getSObjectType().getDescribe().getName();
+                if (mapNameToListSObject.containsKey(objName)) {
+                    mapNameToListSObject.get(objName).add(SObj);
                 } else {
-                	UTIL_Debug.debug(LoggingLevel.WARN, '****Not one of our basic object types');
-                	unknown.add(o);
+                    mapNameToListSObject.put(objName, new list<SObject>{SObj});
                 }
             }
-            sorted.addAll(accounts);
-            sorted.addAll(contacts);
-            sorted.addAll(opps);
-            sorted.addAll(addresses);
-            sorted.addAll(affiliations);
-            sorted.addAll(errors);
-            sorted.addAll(households);
-            sorted.addAll(payments);
-            sorted.addAll(recDonations);
-            sorted.addAll(relationships);
-            sorted.addAll(allocations);
-            sorted.addAll(unknown);
-            
+
+
+            for (list<SObject> groupedObjects : mapNameToListSObject.values())
+                sorted.addAll(groupedObjects);
+
             return sorted;
         }
     }
     
+    /*******************************************************************************************************
+    * @description Different type of actions to run classes for from triggers. Equivalent to trigger events,
+    * but used in our TDTM design.
+    */
     global enum Action {   
         BeforeInsert, 
         BeforeUpdate, 

@@ -30,7 +30,9 @@
 /**
 * @author Salesforce.com Foundation
 * @date 2014
-* @description Class that notifies specific users on error through email and/or Chatter 
+* @description Notifies specific users or groups by email or Chatter when error occur.
+* @group ErrorHandling
+* @group-content ../../ApexDocContent/ErrorHandling.htm
 */
 public with sharing class ERR_Notifier {
 
@@ -144,7 +146,8 @@ public with sharing class ERR_Notifier {
         mail.setReplyTo('donotreply@salesforcefoundation.org');
         mail.setSenderDisplayName('Nonprofit Starter Pack');
         mail.setSubject('NPSP Error');
-        string bodyString = '';
+        string bodyString = 'Organization: ' + UserInfo.getOrganizationName() + '(' + UserInfo.getOrganizationId() + ')\n';
+        bodyString += 'User: ' + UserInfo.getUserName() + '(' + UserInfo.getUserId() + ')';
         if (context == ERR_Handler_API.Context.RD.name())
             bodyString += system.label.npe03.RecurringDonationErrorEmailBody;
         bodyString += '\n\nErrors:';

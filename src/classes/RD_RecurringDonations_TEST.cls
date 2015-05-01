@@ -30,19 +30,21 @@
 /**
 * @author Salesforce.com Foundation
 * @date 2012 (2.0)
+* @group Recurring Donations
 * @description Test class for the RecurringDonations class
 */
 @isTest
 public class RD_RecurringDonations_TEST {
 
+    /*********************************************************************************************************
+    * @description if you only want to run one test in this class, fill in its name here.
+    * if you want to run all tests, then use '*'
+    */
+    private static string strTestOnly = '*';    
 
-    // if you only want to run one test in this class, fill in its name here.
-    // if you want to run all tests, then use '*'
-    private static string strTestOnly = '*';
-    
-
-    /// <name> insertOpportunities_Test </name>
-    /// <summary> test method for insertOpportunities function </summary>
+    /*******************************************************************************************************
+    * @description test method for insertOpportunities function 
+    */ 
     static testMethod void insertOpportunities()
     {
         if (strTestOnly != '*' && strTestOnly != 'insertOpportunities') return;
@@ -262,7 +264,7 @@ public class RD_RecurringDonations_TEST {
     }
     
     static testMethod void contactRolesOnOppsBucket() {
-    	contactRolesOnOppsProcessor(CAO_Constants.BUCKET_PROCESSOR);
+        contactRolesOnOppsProcessor(CAO_Constants.BUCKET_PROCESSOR);
     }
     static testMethod void contactRolesOnOppsOne2One() {
         contactRolesOnOppsProcessor(CAO_Constants.ONE_TO_ONE_PROCESSOR);
@@ -1453,8 +1455,6 @@ public class RD_RecurringDonations_TEST {
         system.assert(originalOpps.size() > [select count() from Opportunity where isClosed = false and (npe03__Recurring_Donation__c = :r1.id or npe03__Recurring_Donation__c = :r2.id)]);        
     }
     
-    /*** Test Methods from RD_ErrorHandling ***/
-    
     static testMethod void testErrorHandlingAllSysAdmins(){
         if (strTestOnly != '*' && strTestOnly != 'testErrorHandlingAllSysAdmins') return;
 
@@ -1741,8 +1741,7 @@ public class RD_RecurringDonations_TEST {
         controller.saveCISettings();
     }
 *************************************************************************/
-   
-   // from RD_RecurringDonations_SCHED  
+
    static testmethod void test(){ 
         if (strTestOnly != '*' && strTestOnly != 'test') return;
              
@@ -1801,5 +1800,68 @@ public class RD_RecurringDonations_TEST {
         system.assertEquals(r1.id, rdadb.RecurringDonation.id);
         rdadb.buttonClick();    
     }    
-                
+    /*******************************************************************************************************
+    * @description test method for custom field mapping on insert and update
+    */ 
+    static testMethod void testRDCustomFieldMapping()
+    {
+        if (strTestOnly != '*' && strTestOnly != 'testRDCustomFieldMapping') return;
+        
+        UTIL_Debug.debug('multiply: ' + system.label.npe03.RecurringDonationMultiplyValue);
+        UTIL_Debug.debug('divide: ' + system.label.npe03.RecurringDonationDivideValue);
+        Account a = new Account();
+        a.Name = 'test Individual';
+        insert a;
+        
+        Contact c = new Contact();
+        c.FirstName = 'test';
+        c.LastName = 'contact';
+        c.AccountId = a.Id;        
+        insert c;
+        
+        //Create new CFM
+        delete [select id from npe03__Custom_Field_Mapping__c];
+        npe03__Custom_Field_Mapping__c cfm = new npe03__Custom_Field_Mapping__c(
+        npe03__Recurring_Donation_Field__c = 'Name',
+        npe03__Opportunity_Field__c = 'Description',
+        Name = 'CFMName00001-Test'
+        );
+        insert cfm;
+
+
+        npe03__Recurring_Donation__c r1 = new npe03__Recurring_Donation__c();
+        r1.Name = 'TestRD CFM Insert';
+        r1.npe03__Installments__c = 2;
+        r1.npe03__Contact__c = c.Id;
+        r1.npe03__Amount__c = 100;
+        r1.npe03__Installment_Period__c = system.label.npe03.RecurringDonationInstallmentPeriodYearly;
+        r1.npe03__Date_Established__c = date.newinstance(1970,6,12);
+        r1.npe03__Schedule_Type__c = system.label.npe03.RecurringDonationMultiplyValue;
+        r1.npe03__Open_Ended_Status__c = 'None'; 
+        insert r1;
+        
+        //check that opps have picked up the value of the RD field set through custom field mapping
+        Opportunity[] installments1 = [select Description from Opportunity where npe03__Recurring_Donation__c = :r1.id order by CloseDate];
+        for(opportunity opp:installments1){
+            system.assertEquals(r1.name, opp.description);                
+        }
+
+        Test.startTest();
+            RD_ProcessControl.hasRun=false;
+            r1.name='TestRD CFM Update';
+            update r1;
+        Test.stopTest();
+
+
+        npe03__Recurring_Donation__c r2 = [select name from npe03__Recurring_Donation__c r1 where id=:r1.id];
+
+        system.assertEquals(r2.name,'TestRD CFM Update');
+        //check that opps have picked up the upated value of the RD field set through custom field mapping
+        Opportunity[] installments2 = [select Description from Opportunity where npe03__Recurring_Donation__c = :r1.id order by CloseDate];
+        for(opportunity opp:installments2){
+            system.assertEquals(r2.name, opp.description);                
+        }
+
+        
+    }
 }

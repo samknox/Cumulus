@@ -30,14 +30,22 @@
 /**
 * @author Salesforce.com Foundation
 * @date 2012 (2.0)
-* @description The main class for controlling the behavior of Recurring Donations, both open ended and standard 
+* @group Recurring Donations
+* @description Trigger Handler on Recurring Donations 
 */
 public with sharing class RD_RecurringDonations_TDTM extends TDTM_Runnable {
-	
-    // trigger handler for Recurring Donations called on an Opportunity trigger AfterUpdate.
-    // needs to see if the Opp is changing to closed, and if it has open RD's, update them.
+    
+    /*******************************************************************************************************
+    * @description Trigger Handler on Recurring Donations.  Deals with creating/updating/deleting the opps
+    * related to the Recurring Donations.
+    * @param newlist the list of RD's from trigger new. 
+    * @param oldlist the list of RD's from trigger old. 
+    * @param triggerAction which trigger event (BeforeInsert, AfterInsert, etc.). 
+    * @param objResult the describe for Recurring Donation 
+    * @return dmlWrapper. 
+    ********************************************************************************************************/
     public override DmlWrapper run(List<SObject> newlist, List<SObject> oldlist, 
-    TDTM_Runnable.Action triggerAction, Schema.DescribeSObjectResult objResult) {
+        TDTM_Runnable.Action triggerAction, Schema.DescribeSObjectResult objResult) {
 
         list<npe03__Recurring_Donation__c> listRDDeletes = new list<npe03__Recurring_Donation__c>();
         map<id, npe03__Recurring_Donation__c> mapIdRDInserts = new map<id, npe03__Recurring_Donation__c>();
@@ -48,16 +56,16 @@ public with sharing class RD_RecurringDonations_TDTM extends TDTM_Runnable {
             return null;
             
         if (triggerAction == TDTM_Runnable.Action.AfterInsert) {
-        	set<Id> setRDId = new set<Id>();
-        	for (SObject s : newlist) 
-        	   setRDId.add(s.Id);
-        	newlist = RD_RecurringDonations.requeryListRD(setRDId);
-        	// since we recreate newlist, we can't assume it is same order as oldlist.
-        	// luckily we don't need oldlist for the AfterInsert scenario.
-        	oldlist = null; 
+            set<Id> setRDId = new set<Id>();
+            for (SObject s : newlist) 
+               setRDId.add(s.Id);
+            newlist = RD_RecurringDonations.requeryListRD(setRDId);
+            // since we recreate newlist, we can't assume it is same order as oldlist.
+            // luckily we don't need oldlist for the AfterInsert scenario.
+            oldlist = null; 
         } else if (triggerAction == TDTM_Runnable.Action.BeforeDelete) {
-        	// newlist will be null.  copy over oldlist, so we can use common loop below.
-        	newlist = oldlist;
+            // newlist will be null.  copy over oldlist, so we can use common loop below.
+            newlist = oldlist;
         }
 
         if (triggerAction != TDTM_Runnable.Action.BeforeInsert && triggerAction != TDTM_Runnable.Action.BeforeUpdate)

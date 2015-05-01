@@ -30,10 +30,9 @@
 /**
 * @author Salesforce.com Foundation
 * @date 2009
-*
 * @group Affiliations
-*
-* @description  
+* @group-content ../../ApexDocContent/Affiliations.htm
+* @description  Trigger handler for Affiliations related operations on Contacts, Accounts, or Affiliations.
 */
 public class AFFL_Affiliations_TDTM extends TDTM_Runnable {
 
@@ -41,21 +40,30 @@ public class AFFL_Affiliations_TDTM extends TDTM_Runnable {
     public static boolean hasRunForContacts = false;
     public static boolean hasRunForAffiliations = false;
     public static boolean hasRunForAccounts = false;
-    
-    // the main entry point for TDTM to invoke our trigger handlers.
+
+    /*******************************************************************************************************
+    * @description Trigger Handler on Contact, Account, or Affiliation, dispatches to the correct method
+    * based on object type.
+    * @param listNew the list of contacts, accounts, or affiliations from trigger new. 
+    * @param listOld the list of contacts, accounts, or affiliations from trigger old. 
+    * @param triggerAction Which action triggered the current context. (Before or After; Insert, Update, 
+    * Delete, or Undelete.)
+    * @param objResult The field describe object for the current trigger context. 
+    * @return dmlWrapper Objects that need to be inserted or updated after the processing of the trigger.
+    ********************************************************************************************************/    
     public override DmlWrapper run(List<SObject> newlist, List<SObject> oldlist, 
         TDTM_Runnable.Action triggerAction, Schema.DescribeSObjectResult objResult) {
             
         // dispatch to the correct handler
-        if (objResult == Schema.Sobjecttype.Contact && !hasRunForContacts) {
+        if (objResult.getsObjectType() == Contact.sObjectType && !hasRunForContacts) {
             DmlWrapper wrapper = runContactTriggerHandler(newlist, oldlist, triggerAction, objResult);
             hasRunForContacts = true;
             return wrapper;
-        } else if (objResult == Schema.Sobjecttype.npe5__Affiliation__c && !hasRunForAffiliations) {
+        } else if (objResult.getsObjectType() == npe5__Affiliation__c.sObjectType && !hasRunForAffiliations) {
             DmlWrapper wrapper = runAfflTriggerHandler(newlist, oldlist, triggerAction, objResult);
             hasRunForAffiliations = true;
             return wrapper;
-        } else if (objResult == Schema.Sobjecttype.Account && !hasRunForAccounts) {
+        } else if (objResult.getsObjectType() == Account.sObjectType && !hasRunForAccounts) {
             DmlWrapper wrapper = runAccountTriggerHandler(newlist, oldlist, triggerAction, objResult);
             hasRunForAccounts = true;
             return wrapper;
@@ -64,7 +72,16 @@ public class AFFL_Affiliations_TDTM extends TDTM_Runnable {
         }
     }
                 
-    // the trigger handler on Contact for managing Affiliations        
+    /*******************************************************************************************************
+    * @description Affiliation trigger handler on Contact. Creates affiliations and/or updates existing 
+    * affiliation primary checkbox and status field.
+    * @param listNew The list of contacts from trigger new. 
+    * @param listOld The list of contacts from trigger old. 
+    * @param triggerAction Which action triggered the current context. (Before or After; Insert, Update, 
+    * Delete, or Undelete.)
+    * @param objResult The field describe object for Contact.
+    * @return dmlWrapper Objects that need to be inserted or updated after the processing of the trigger.
+    ********************************************************************************************************/
     private DmlWrapper runContactTriggerHandler(List<SObject> newlist, List<SObject> oldlist, 
         TDTM_Runnable.Action triggerAction, Schema.DescribeSObjectResult objResult) {
         DmlWrapper dmlWrapper = new DmlWrapper();
@@ -160,7 +177,16 @@ public class AFFL_Affiliations_TDTM extends TDTM_Runnable {
         return dmlWrapper;
     }
 
-    // the trigger handler on Account for managing Affiliations        
+    /*******************************************************************************************************
+    * @description Affiliation trigger handler on Account. Creates affiliations and/or updates existing 
+    * affiliation primary checkbox and status field.
+    * @param listNew The list of Accounts from trigger new. 
+    * @param listOld The list of Accounts from trigger old. 
+    * @param triggerAction Which action triggered the current context. (Before or After; Insert, Update, 
+    * Delete, or Undelete.)
+    * @param objResult The field describe object for Account. 
+    * @return dmlWrapper Objects that need to be inserted or updated after the processing of the trigger.
+    ********************************************************************************************************/
     private DmlWrapper runAccountTriggerHandler(List<SObject> newlist, List<SObject> oldlist, 
         TDTM_Runnable.Action triggerAction, Schema.DescribeSObjectResult objResult) {
         DmlWrapper dmlWrapper = new DmlWrapper();
@@ -225,8 +251,9 @@ public class AFFL_Affiliations_TDTM extends TDTM_Runnable {
     }
 
 
-    // temporary class used to track which affiliations need
-    // what type of operation performed on them.
+    /*******************************************************************************************************
+    * @description Wrapper class to track affiliations and which operations need to be performed on them.
+    */ 
     private class AfflOps {
 
         // constructor
@@ -261,14 +288,24 @@ public class AFFL_Affiliations_TDTM extends TDTM_Runnable {
         
     }
     
-    
-    // utility to create a string based Combo Key for an affiliation's contactId and accountId
+    /*******************************************************************************************************
+    * @description Combines the ids of a contact and an account as a unique identifier for affiliations.
+    * @param contactId The id of a contact.
+    * @param accountId The id of an account.
+    * @return string A string with the contact id, a pipe character |, and the account id.
+    ********************************************************************************************************/
     private static string strComboKeyFromContactIdAccountId(Id contactId, Id accountId) {
         return contactId + '|' + accountId;
     }
 
-    // looks at each affiliation and the possible operations to perform on them
-    // and figures out which to insert vs update, and adds them to the dmlWrapper.
+    /*******************************************************************************************************
+    * @description Using a map of unique affiliation identifiers and our AfflOps class, this method queries
+    * existing affiliations, then processes AfflOps to create new or update existing affiliations.
+    * @param mapStrComboKeyAfflOps A map of combination contact id and account id keys from the 
+    * strComboKeyFromContactIdAccountId method to AfflOps objects.
+    * @param dmlWrapper The dmlWrapper class for this transaction.
+    * @return void This class updates the dmlWrapper parameter and returns nothing.
+    ********************************************************************************************************/  
     private static void processAfflOps(map<string, AfflOps> mapStrComboKeyAfflOps, DmlWrapper dmlWrapper) {
 
         // the collections we want to insert/update in the db
@@ -301,14 +338,21 @@ public class AFFL_Affiliations_TDTM extends TDTM_Runnable {
                 //check to see if this account isn't an individual.
                 Account acc =  mapAccountIdAccount.get(accountId);
                 if (acc != null && acc.npe01__SYSTEMIsIndividual__c != true) {
-                    npe5__Affiliation__c a = new npe5__Affiliation__c();
-                    a.npe5__Contact__c = contactId;
-                    a.npe5__Organization__c = accountId;
-                    a.npe5__Status__c = system.label.npe5.DefaultCurrentStatus;
-                    a.npe5__StartDate__c = System.Today();
-                    a.npe5__Role__c = ao.strRole;
-                    a.npe5__Primary__c = ao.fPrimary;
-                    listAfflInsert.add(a);
+                    npe5__Affiliation__c existingAffl = mapStrComboKeyAffl.get(ao.strComboKey);
+                    if (existingAffl != null) {
+                        existingAffl.npe5__EndDate__c = null;
+                        if (ao.fPrimary) existingAffl.npe5__Primary__c = ao.fPrimary;
+                        listAfflIdAfflUpdate.add(existingAffl);
+                    } else {
+                        npe5__Affiliation__c a = new npe5__Affiliation__c();
+                        a.npe5__Contact__c = contactId;
+                        a.npe5__Organization__c = accountId;
+                        a.npe5__Status__c = system.label.npe5.DefaultCurrentStatus;
+                        a.npe5__StartDate__c = System.Today();
+                        a.npe5__Role__c = ao.strRole;
+                        a.npe5__Primary__c = ao.fPrimary;
+                        listAfflInsert.add(a);
+                    }
                 }           
             }
             
@@ -354,12 +398,21 @@ public class AFFL_Affiliations_TDTM extends TDTM_Runnable {
         }
             
        if (listAfflIdAfflUpdate.size() > 0) {
-            //UTIL_Debug.debug('**** listAfflIdAfflUpdate: ' + JSON.serializePretty(listAfflIdAfflUpdate.values()));
+            //UTIL_Debug.debug('**** listAfflIdAfflUpdate: ' + JSON.serializePretty(listAfflIdAfflUpdate));
             dmlWrapper.objectsToUpdate.addAll((list<SObject>) listAfflIdAfflUpdate);
        }
     }
     
-    // the trigger handler on Affiliation for managing Affiliations        
+    /*******************************************************************************************************
+    * @description Affiliation trigger handler on Affiliations. Updates a contact's primary affiliation
+    * field for a new primary affiliation.
+    * @param listNew The list of affiliations from trigger new. 
+    * @param listOld The list of affiliations from trigger old. 
+    * @param triggerAction Which action triggered the current context. (Before or After; Insert, Update, 
+    * Delete, or Undelete.)
+    * @param objResult The field describe object for Contact.
+    * @return dmlWrapper Objects that need to be inserted or updated after the processing of the trigger.
+    ********************************************************************************************************/
     private DmlWrapper runAfflTriggerHandler(List<SObject> newlist, List<SObject> oldlist, 
         TDTM_Runnable.Action triggerAction, Schema.DescribeSObjectResult objResult) {
 
@@ -410,6 +463,134 @@ public class AFFL_Affiliations_TDTM extends TDTM_Runnable {
             dmlWrapper.objectsToUpdate.addAll((List<SObject>)listCon);
         }
         return dmlWrapper;
+    }
+    
+    /*******************************************************************************************************
+    * @description Remove all duplicate affiliations and make sure only one is primary, for the list of
+    * Contacts.  Called by handleContactMergeFixupsFuture() after a Contact Merge has occurred.
+    * @param listCon The list of Contacts 
+    * @return null
+    ********************************************************************************************************/
+    public static void cleanupContactAffiliations(list<Contact> listCon) {
+    
+        // use dmlWrapper to handle all of our database operations
+        TDTM_Runnable.DmlWrapper dmlWrapper = new TDTM_Runnable.DmlWrapper();    
+        
+        // for each Contact, get its list of Affiliations in oldest to newest order (of LastModifiedDate)
+        map<Id, list<npe5__Affiliation__c>> mapConIdListAffl = new map<Id, list<npe5__Affiliation__c>>();
+        
+        // first we get all affiliations involved
+        list<npe5__Affiliation__c> listAffl = [select Id, npe5__Contact__c, npe5__EndDate__c, npe5__Organization__c, 
+            npe5__Primary__c, npe5__Role__c, npe5__StartDate__c, npe5__Status__c, npe5__Description__c
+            from npe5__Affiliation__c 
+            where npe5__Contact__c in :listCon
+            order by npe5__Contact__c, npe5__Primary__c desc, LastModifiedDate asc];
+        //UTIL_Debug.debug('****DJH listAffl: ' + listAffl);
+
+        // now put each contact's affilations on their own list            
+        for (npe5__Affiliation__c affl : listAffl) {
+            list<npe5__Affiliation__c> listConAffl = mapConIdListAffl.get(affl.npe5__Contact__c);
+            if (listConAffl == null) {
+                listConAffl = new list<npe5__Affiliation__c>();
+                mapConIdListAffl.put(affl.npe5__Contact__c, listConAffl);
+            }
+            listConAffl.add(affl);
+        }
+        
+        // now we go through each contact's list of affiliations to find duplicates
+        // and pick the one to be marked Primary  
+        for (Contact con : listCon) {
+        
+	        // skip this contact if they have no affiliations to deal with 
+	        if (!mapConIdListAffl.containsKey(con.Id))
+	           continue;
+
+            // to track the best Affilition to be Primary
+            npe5__Affiliation__c afflPrimary;
+            npe5__Affiliation__c afflPrimaryBackup;
+
+            // create a map of afflKeys to affl's to find our duplicates
+            map<string, list<npe5__Affiliation__c>> mapAfflKeyAffl = new map<string, list<npe5__Affiliation__c>>(); 
+            for (npe5__Affiliation__c affl : mapConIdListAffl.get(con.Id)) {
+                string afflKey = getAfflKey(affl);
+                listAffl = mapAfflKeyAffl.get(afflKey);
+                if (listAffl == null) {
+                    listAffl = new list<npe5__Affiliation__c>();
+                    mapAfflKeyAffl.put(afflKey, listAffl);
+                }
+                listAffl.add(affl);
+                
+                // primary checking
+                if (affl.npe5__Organization__c == con.Primary_Affiliation__c && afflPrimary == null) {
+                    if (affl.npe5__Primary__c)
+                        afflPrimary = affl;
+                    else
+                        afflPrimaryBackup = affl;
+                }
+            }
+            
+            // if no Affiliation was correctly marked primary, take our backup
+            if (afflPrimary == null)
+                afflPrimary = afflPrimaryBackup;
+            
+            //UTIL_Debug.debug('****DJH mapAfflKeyAffl: ' + mapAfflKeyAffl);
+            
+            // now we have the lists of duplicate affiliations, remove the duplicates.            
+            for (string afflKey : mapAfflKeyAffl.keySet()) {
+                listAffl = mapAfflKeyAffl.get(afflKey);
+                
+                // first find the Affl to keep (Primary, and then oldest)
+                npe5__Affiliation__c afflKeep;                     
+                for (integer i = 0; i < listAffl.size(); i++) {
+                    npe5__Affiliation__c affl = listAffl[i];
+                    if (affl == afflPrimary) {                                                
+                        affl.npe5__Primary__c = true;
+                        afflKeep = affl;
+                    } else {
+                        affl.npe5__Primary__c = false;
+	                    if (i == 0 & afflKeep == null) {
+	                        afflKeep = affl;
+	                    }
+                    }
+                }
+                    
+                // update the primary/oldest and delete the others
+                for (integer i = 0; i < listAffl.size(); i++) {
+                    npe5__Affiliation__c affl = listAffl[i];
+                    if (affl == afflKeep) {
+                        //UTIL_Debug.debug('****DJH update affl: ' + affl);
+                        dmlWrapper.objectsToUpdate.add(affl);                        
+                    } else {
+                        //UTIL_Debug.debug('****DJH delete affl: ' + affl);
+                        dmlWrapper.objectsToDelete.add(affl);
+                    }
+                }
+            }
+        }
+        // perform our updates & deletes for dealing with the duplicate affiliations
+        TDTM_TriggerHandler.processDml(dmlWrapper); 
+    }
+
+    /*******************************************************************************************************
+    * @description Returns a unique string key that represents the data of an Affiliation, which can be used
+    * to detect duplicate Affiliations.  Note that Primary is intentionally not included, since we will use
+    * the Affliation specified in the Contact's Primary Affiliation field.
+    * @param affl The Affiliation 
+    * @return String The afflKey
+    ********************************************************************************************************/
+    private static string getAfflKey(npe5__Affiliation__c affl) {
+        if (affl == null)
+            return null;
+        // do not include Primary
+        string afflKey = 
+            affl.npe5__Contact__c + ':' + 
+            affl.npe5__Organization__c + ':' +
+            affl.npe5__Role__c + ':' +
+            affl.npe5__Status__c + ':' +
+            affl.npe5__Description__c + ':' +
+            string.valueOf(affl.npe5__StartDate__c) + ':' + 
+            string.valueOf(affl.npe5__EndDate__c);
+        return afflKey;
     }
 
 }

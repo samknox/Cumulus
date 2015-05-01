@@ -31,7 +31,9 @@
 /**
 * @author Salesforce.com Foundation
 * @date 2014
-* @description Stores the default TDTM cofiguration, and the mapping between the old NPSP
+* @group TDTM
+* @group-content ../../ApexDocContent/TDTM.htm
+* @description Stores the default TDTM configuration, and the mapping between the old NPSP
                settings and the new ones. 
 */
 public without sharing class TDTM_DefaultConfig {
@@ -85,6 +87,11 @@ public without sharing class TDTM_DefaultConfig {
         handlers.add(new Trigger_Handler__c(Active__c = true, Asynchronous__c = false, 
               Class__c = 'ACCT_Accounts_TDTM', Load_Order__c = 1, Object__c = 'Account', 
               Trigger_Action__c = 'BeforeInsert;BeforeUpdate;AfterUpdate'));
+
+        // Account Merge on Account
+        handlers.add(new Trigger_Handler__c(Active__c = true, Asynchronous__c = false, 
+              Class__c = 'ACCT_AccountMerge_TDTM', Load_Order__c = 1, Object__c = 'Account', 
+              Trigger_Action__c = 'AfterDelete'));
 
         // OpportunityContactRole support
         handlers.add(new Trigger_Handler__c(Active__c = true, Asynchronous__c = false, 
@@ -165,6 +172,22 @@ public without sharing class TDTM_DefaultConfig {
         handlers.add(new Trigger_Handler__c(Active__c = true, Asynchronous__c = false, 
               Class__c = 'ALLO_Multicurrency_TDTM', Load_Order__c = 1, Object__c = 'npe03__Recurring_Donation__c', 
               Trigger_Action__c = 'AfterUpdate'));
+
+        // Do Not Contact and related operations on Contact object
+        handlers.add(new Trigger_Handler__c(Active__c = true, Asynchronous__c = false, 
+              Class__c = 'CON_DoNotContact_TDTM', Load_Order__c = 2, Object__c = 'Contact', 
+              Trigger_Action__c = 'BeforeInsert;BeforeUpdate'));
+
+        // Opportunity naming
+        handlers.add(new Trigger_Handler__c(Active__c = true, Asynchronous__c = false, 
+              Class__c = 'OPP_OpportunityNaming_TDTM', Load_Order__c = 3, Object__c = 'Opportunity', 
+              Trigger_Action__c = 'AfterInsert'));
+
+        // Contact Merge on Contact object
+        handlers.add(new Trigger_Handler__c(Active__c = true, Asynchronous__c = false, 
+              Class__c = 'CON_ContactMerge_TDTM', Load_Order__c = 2, Object__c = 'Contact', 
+              Trigger_Action__c = 'BeforeDelete;AfterDelete'));
+
 
         return handlers;
     }

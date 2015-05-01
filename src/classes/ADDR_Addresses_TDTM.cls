@@ -408,7 +408,8 @@ public with sharing class ADDR_Addresses_TDTM extends TDTM_Runnable {
             MailingStreet__c, MailingStreet2__c, MailingCity__c, MailingState__c, MailingPostalCode__c, MailingCountry__c, 
             Seasonal_Start_Month__c, Seasonal_Start_Day__c, Seasonal_End_Month__c, Seasonal_End_Day__c 
             from Address__c 
-            where Household_Account__c in :listAccId];
+            where Household_Account__c in :listAccId
+            order by Default_Address__c desc, LastModifiedDate asc]; // ordering needed by cleanupAccountAddresses().
         for (Address__c addr : listAddrOther) {
             list<Address__c> listAddrHH = mapAccIdListAddrHH.get(addr.Household_Account__c);
             if (listAddrHH == null) {
@@ -447,21 +448,36 @@ public with sharing class ADDR_Addresses_TDTM extends TDTM_Runnable {
         if (addrNew == null || addrOld == null) 
            return false;        
         return (
-           addrNew.MailingStreet__c != addrOld.MailingStreet__c ||
-           addrNew.MailingStreet2__c != addrOld.MailingStreet2__c ||
-           addrNew.MailingCity__c != addrOld.MailingCity__c ||
-           addrNew.MailingState__c != addrOld.MailingState__c ||
-           addrNew.MailingPostalCode__c != addrOld.MailingPostalCode__c ||
-           addrNew.MailingCountry__c != addrOld.MailingCountry__c ||
-           (includeAddressType && (addrNew.Address_Type__c != addrOld.Address_Type__c)));
+           !equalsCaseSensitive(addrNew.MailingStreet__c, addrOld.MailingStreet__c) ||
+           !equalsCaseSensitive(addrNew.MailingStreet2__c, addrOld.MailingStreet2__c) ||
+           !equalsCaseSensitive(addrNew.MailingCity__c, addrOld.MailingCity__c) ||
+           !equalsCaseSensitive(addrNew.MailingState__c, addrOld.MailingState__c) ||
+           !equalsCaseSensitive(addrNew.MailingPostalCode__c, addrOld.MailingPostalCode__c) ||
+           !equalsCaseSensitive(addrNew.MailingCountry__c, addrOld.MailingCountry__c) ||
+           (includeAddressType && (!equalsCaseSensitive(addrNew.Address_Type__c, addrOld.Address_Type__c))));
     }
 
     /*******************************************************************************************************
-    * @description tility to compare two address objects address fields and support fuzzy matching; our definition of fuzzy is: only one field has changed, ignoring whitespace and letter casing changes.
+    * @description Returns whether two strings are equal, using a case sensitve comparison
+    * @param str1 The first string
+    * @param str2 The second string
+    * @return boolean 
+    ********************************************************************************************************/
+    public static boolean equalsCaseSensitive(string str1, string str2) {
+        if (str1 == null)
+            return str2 == null;
+        if (str2 == null)
+            return false;
+        return str1.equals(str2);
+    }
+
+    /*******************************************************************************************************
+    * @description Compare two address objects address fields and support fuzzy matching; our definition of 
+    * fuzzy is: only one field has changed, ignoring whitespace and letter casing changes.
     * @param addrNew the new version of the Address
     * @param addrOld the old version of the Address
     * @param includeAddressType whether to include comparing the AddressType field
-    * @return boolean true if more than one of the fields fields have changed on the Address, ignoring whitespace and case changes
+    * @return boolean true if no more than one of the fields have changed on the Address, ignoring whitespace and case changes
     */     
     private static boolean isAddressMatchFuzzy(Address__c addrNew, Address__c addrOld) {
         if (addrNew == null || addrOld == null) 
@@ -473,6 +489,8 @@ public with sharing class ADDR_Addresses_TDTM extends TDTM_Runnable {
         if (strCleanup(addrNew.MailingStreet2__c) != strCleanup(addrOld.MailingStreet2__c) && addrOld.MailingStreet2__c != null)
             cChange++;
         if (strCleanup(addrNew.MailingCity__c) != strCleanup(addrOld.MailingCity__c) && addrOld.MailingCity__c != null)
+            cChange++;
+        if (strCleanup(addrNew.MailingState__c) != strCleanup(addrOld.MailingState__c) && addrOld.MailingState__c != null)
             cChange++;
         if (strCleanup(addrNew.MailingPostalCode__c) != strCleanup(addrOld.MailingPostalCode__c) && addrOld.MailingPostalCode__c != null)
             cChange++;
@@ -490,6 +508,8 @@ public with sharing class ADDR_Addresses_TDTM extends TDTM_Runnable {
         if (str != null) {
             str = str.replace(' ', '');
             str = str.toLowerCase();
+        } else {
+            str = '';
         }
         return str;
     }
@@ -728,6 +748,114 @@ public with sharing class ADDR_Addresses_TDTM extends TDTM_Runnable {
         return mapAddrDupAddr;               
     }
     
+    /*******************************************************************************************************
+    * @description Cleanup the Addresses for the specified Accounts by removing any duplicate Addresses,
+    * making sure only one is marked Default, and that the Default is propagated to the appropriate
+    * Account and Contacts.
+    *
+    * @param listAccId a list of Account Id's to process
+    * @return null
+    */ 
+    public static void cleanupAccountAddresses(list<ID> listAccId) { 
+    
+        // use dmlWrapper to handle all of our database operations
+        TDTM_Runnable.DmlWrapper dmlWrapper = new TDTM_Runnable.DmlWrapper();    
+        
+        // for each Account, track its correct Default Address
+        map<Id, Address__c> mapAccIdAddr = new map<Id, Address__c>();
+
+        // for each Account, get its list of Addresses in oldest to newest order (of LastModifiedDate)
+        map<Id, list<Address__c>> mapAccIdListAddrHH = getMapAccIdListAddrHH(listAccId);
+        
+        for (ID accId : mapAccIdListAddrHH.keySet()) {
+            if (mapAccIdListAddrHH.get(accId) != null) {         
+	            map<string, list<Address__c>> mapAddrKeyToAddresses = new map<string, list<Address__c>>(); 
+	            Address__c addrDefault;
+	            
+                for (Address__c addr : mapAccIdListAddrHH.get(accId)) {
+                    
+                    // remember the oldest modified Default address
+                    // this is the one from the winning account, since the losing account addresses get updated.
+                    if (addr.Default_Address__c && addrDefault == null) {
+                        addrDefault = addr;
+                        mapAccIdAddr.put(accId, addrDefault);
+                    }
+
+                    // create our map of Address Keys to a list of one or more Addresses
+                    string addrKey = getAddrKey(addr);
+                    list<Address__c> listAddr = mapAddrKeyToAddresses.get(addrKey);
+                    if (listAddr == null) {
+                        listAddr = new list<Address__c>();
+                        mapAddrKeyToAddresses.put(addrKey, listAddr);
+                    }
+                    listAddr.add(addr);
+                }
+                
+                // now we have the Default Address to use and lists of potential duplicate addresses
+                // remove the duplicates, updating any contacts that are using the duplicates
+                // we delay getting the contacts until we know we have a duplicate.
+                list<Contact> listCon = null;
+                for (string addrKey : mapAddrKeyToAddresses.keySet()) {
+                    list<Address__c> listAddr = mapAddrKeyToAddresses.get(addrKey);
+                    for (integer i = 1; i < listAddr.size(); i++) {
+                        Address__c addrDupe = listAddr[i];
+                        if (listCon == null)
+                            listCon = [select Id, Current_Address__c from Contact where AccountId =: accId];
+                        replaceAddress(addrDupe, listAddr[0], listCon, dmlWrapper);
+                        dmlWrapper.objectsToDelete.add(addrDupe);
+                    }
+                }
+                
+            } 
+        }
+        // perform our updates & deletes for dealing with the duplicate addresses
+        TDTM_TriggerHandler.processDml(dmlWrapper);
+
+	    // now make sure all contacts are using the correct default address
+	    dmlWrapper = new TDTM_Runnable.DmlWrapper();
+	    refreshCurrentHHAddress(mapAccIdAddr, dmlWrapper, false);
+        TDTM_TriggerHandler.processDml(dmlWrapper);
+    }
+    
+    /*******************************************************************************************************
+    * @description replaces the losing address with the winning address in any contacts referring to the 
+    * loser.  Note that it just updates the contact's Address lookup, and doesn't copy any Address data.
+    * Any Contacts that are modified are put on dmlWrapper for later updating.
+    * @param addrLoser the Address to look for
+    * @param addrWinner the Address to replace with
+    * @param listCon the list of Contacts to evaluate
+    * @param dmlWrapper to hold any Contacts that need updating
+    * @return null
+    */ 
+    private static void replaceAddress(Address__c addrLoser, Address__c addrWinner, list<Contact> listCon, TDTM_Runnable.DmlWrapper dmlWrapper) {    
+        for (Contact con : listCon) {
+            if (con.Current_Address__c == addrLoser.Id) {
+                con.Current_Address__c = addrWinner.Id;
+                dmlWrapper.objectsToUpdate.add(con);
+            }
+        }
+    }
+
+    /*******************************************************************************************************
+    * @description returns a unique key the represents the address object for address matching
+    * @param addr the Address to look at
+    * @return string The Address's unique Key
+    */ 
+    private static string getAddrKey(Address__c addr) {
+        string strKey =
+            strCleanup(addr.MailingStreet__c) +
+            strCleanup(addr.MailingStreet2__c) +
+            strCleanup(addr.MailingCity__c) +
+            strCleanup(addr.MailingState__c) +
+            strCleanup(addr.MailingPostalCode__c) +
+            strCleanup(addr.MailingCountry__c) +
+            (addr.Seasonal_Start_Day__c != null ? addr.Seasonal_Start_Day__c : '') +
+            (addr.Seasonal_Start_Month__c != null ? addr.Seasonal_Start_Month__c : '') +
+            (addr.Seasonal_End_Day__c != null ? addr.Seasonal_End_Day__c : '') +
+            (addr.Seasonal_End_Month__c != null ? addr.Seasonal_End_Month__c : '');
+        return strKey;
+    }
+
     /*******************************************************************************************************
     * @description utility to see if the address has only a subset of its seasonal fields set
     * @param addr the Address to look at
